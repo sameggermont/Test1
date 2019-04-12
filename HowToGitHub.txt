@@ -4,3 +4,4 @@ git add
 git commit blabla.txt -m "adding blabla.txt"
 git push
 git status
+https://ww .youtube.com/watch?time_continue=702&v=0fKg7e37bQE
