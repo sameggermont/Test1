@@ -1,4 +1,4 @@
-cd "directory of choice" 2
+cd "directory of choice"
 git pull
 git add
 git commit blabla.txt -m "adding blabla.txt"
