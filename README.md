@@ -52,7 +52,20 @@ for free via **GitHub Pages**.
 > [Miniature Market](https://www.miniaturemarket.com/affiliate-program),
 > impact.com retailers, or eBay Partner Network.
 
-## Step 3 — Keep the game data fresh (automatic)
+## Step 3 — Get a BoardGameGeek API token (one-time, free)
+
+The site ships with a working game database, but parts of it come from a 2022
+snapshot. To get fresh, complete data (including high-resolution box art and
+complexity ratings), BGG requires a free access token since October 2025:
+
+1. Log in (or create an account) at <https://boardgamegeek.com>.
+2. Follow the registration instructions at
+   <https://boardgamegeek.com/using_the_xml_api> and copy your access token.
+3. In this GitHub repository go to **Settings → Secrets and variables →
+   Actions → New repository secret**. Name: `BGG_API_TOKEN`, value: your
+   token. Click **Add secret**.
+
+## Step 4 — Keep the game data fresh (automatic)
 
 The **Actions** tab of this repository has a workflow called **"Update game
 data"**. It runs automatically every Monday, and you can also run it by hand:
@@ -62,6 +75,9 @@ data"**. It runs automatically every Monday, and you can also run it by hand:
    (player counts, playtime, complexity, categories, descriptions, images)
    and commits the result to `docs/data/games.json`.
 3. GitHub Pages republishes the site automatically.
+
+Without the `BGG_API_TOKEN` secret from step 3 the workflow will fail with a
+401 error — that's expected, just complete step 3 first.
 
 ## ⚠️ Things to know before this makes real money
 

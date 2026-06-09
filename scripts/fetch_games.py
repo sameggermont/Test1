@@ -15,6 +15,7 @@ import datetime as dt
 import html
 import io
 import json
+import os
 import re
 import sys
 import time
@@ -31,9 +32,17 @@ API_URL = "https://boardgamegeek.com/xmlapi2/thing?id={ids}&stats=1"
 OUTPUT = Path(__file__).resolve().parent.parent / "docs" / "data" / "games.json"
 
 
+# Since October 2025 the BGG XML API requires a registered access token:
+# https://boardgamegeek.com/using_the_xml_api
+BGG_TOKEN = os.environ.get("BGG_API_TOKEN", "").strip()
+
+
 def http_get(url, retries=5):
+    headers = {"User-Agent": USER_AGENT}
+    if BGG_TOKEN and "boardgamegeek.com" in url:
+        headers["Authorization"] = f"Bearer {BGG_TOKEN}"
     for attempt in range(retries):
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        req = urllib.request.Request(url, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 if resp.status == 202:  # BGG queued the request; try again
@@ -41,6 +50,14 @@ def http_get(url, retries=5):
                     continue
                 return resp.read()
         except urllib.error.HTTPError as e:
+            if e.code == 401:
+                sys.exit(
+                    "ERROR: BoardGameGeek rejected the request (401 Unauthorized).\n"
+                    "The BGG XML API now requires a free access token.\n"
+                    "1. Register at https://boardgamegeek.com/using_the_xml_api\n"
+                    "2. Add the token as a repository secret named BGG_API_TOKEN\n"
+                    "   (GitHub repo -> Settings -> Secrets and variables -> Actions)."
+                )
             if e.code in (202, 429, 500, 502, 503) and attempt < retries - 1:
                 wait = 15 * (attempt + 1)
                 print(f"  HTTP {e.code}, retrying in {wait}s...")

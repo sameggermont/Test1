@@ -22,6 +22,8 @@ jobs:
           python-version: "3.12"
 
       - name: Fetch top 500 games from BoardGameGeek
+        env:
+          BGG_API_TOKEN: ${{ secrets.BGG_API_TOKEN }}
         run: python3 scripts/fetch_games.py
 
       - name: Commit updated data
