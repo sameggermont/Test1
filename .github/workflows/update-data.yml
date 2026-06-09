@@ -4,6 +4,9 @@ on:
   workflow_dispatch:      # lets you run it manually from the Actions tab
   schedule:
     - cron: "0 6 * * 1"   # every Monday at 06:00 UTC, keeps rankings fresh
+  push:
+    paths:
+      - ".github/workflows/update-data.yml"   # also run when this file changes
 
 permissions:
   contents: write
