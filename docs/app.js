@@ -12,11 +12,13 @@
 
   const state = {
     games: [],
+    prices: {},
     mood: "any",
     subMood: "all",
     players: "any",
     time: "any",
     weight: "any",
+    price: "any",
     query: "",
     visible: PAGE_SIZE,
   };
@@ -158,6 +160,11 @@
       if (state.weight === "heavy" && g.weight <= 3.2) return false;
     }
 
+    if (state.price !== "any") {
+      const p = state.prices[g.id];
+      if (!p || String(p.tier) !== state.price) return false;
+    }
+
     if (state.query) {
       const hay = [g.name, g.description, ...(g.categories || []), ...(g.mechanics || []), ...(g.domains || [])]
         .filter(Boolean)
@@ -194,6 +201,8 @@
     const best = g.bestWith ? `best ${g.bestWith}p` : null;
     const time = playMinutes(g) !== null ? `${playMinutes(g)} min` : null;
     const weight = g.weight !== null ? `${g.weight}/5 weight` : null;
+    const price = state.prices[g.id];
+    const PRICE_LABELS = { 1: "under $25", 2: "$25–$60", 3: "$60–$100", 4: "$100+" };
 
     const badges = [
       `<span class="badge rank">#${g.rank}</span>`,
@@ -202,6 +211,7 @@
       best ? `<span class="badge">👍 ${best}</span>` : "",
       time ? `<span class="badge">⏱ ${time}</span>` : "",
       weight ? `<span class="badge">🧠 ${weight}</span>` : "",
+      price ? `<span class="badge price" title="typically ${PRICE_LABELS[price.tier]}">${"$".repeat(price.tier)}</span>` : "",
     ].join("");
 
     return `
@@ -300,9 +310,11 @@
     wireChips("player-chips", "players", "players");
     wireChips("time-chips", "time", "time");
     wireChips("weight-chips", "weight", "weight");
+    wireChips("price-chips", "price", "price");
     markActive($("#player-chips"), "players", "any");
     markActive($("#time-chips"), "time", "any");
     markActive($("#weight-chips"), "weight", "any");
+    markActive($("#price-chips"), "price", "any");
 
     $("#search-box").addEventListener("input", (e) => {
       state.query = e.target.value.trim();
@@ -326,10 +338,13 @@
       render();
     });
 
-    fetch("data/games.json")
-      .then((r) => r.json())
-      .then((data) => {
+    Promise.all([
+      fetch("data/games.json").then((r) => r.json()),
+      fetch("data/prices.json").then((r) => r.json()).catch(() => ({ prices: {} })),
+    ])
+      .then(([data, priceData]) => {
         state.games = data.games;
+        state.prices = priceData.prices || {};
         render();
       })
       .catch(() => {

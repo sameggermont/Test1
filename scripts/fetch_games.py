@@ -1,70 +1,49 @@
 #!/usr/bin/env python3
-"""Fetch the BGG top-500 ranking list and enrich it with game details.
+"""Build docs/data/games.json — the what2play game database — WITHOUT
+using the BoardGameGeek API (which requires a license for commercial use).
 
-1. Downloads the most recent daily rankings CSV from the public mirror
-   github.com/beefsack/bgg-ranking-historicals (BGG publishes these dumps).
-2. Fetches details for the top 500 games from the official BGG XML API2
-   (players, playtime, weight, categories, mechanics, images, ...).
-3. Writes everything to docs/data/games.json, which the website reads.
+Sources, in order:
+1. Latest BGG top-500 ranking list from the public community mirror
+   github.com/beefsack/bgg-ranking-historicals (rank, rating, name, year).
+2. Static detail snapshot committed to this repo (data/snapshot_details.json):
+   players, playtime, weight, categories, mechanics, descriptions, images —
+   originally from public community datasets.
+3. Optionally, the public Recommend.Games API (an independent project,
+   https://recommend.games) for fresh complexity scores and high-res images.
+   If it is unreachable, the script simply keeps the snapshot values.
 
 Run with no arguments:  python3 scripts/fetch_games.py
+Set RG_ENRICH=0 to skip the Recommend.Games step entirely.
 """
 
 import csv
 import datetime as dt
-import html
 import io
 import json
 import os
-import re
-import sys
 import time
 import urllib.request
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 TOP_N = 500
-BATCH_SIZE = 20          # games per BGG API request
-SLEEP_BETWEEN = 5        # seconds between API requests (be polite, avoid 429s)
 USER_AGENT = "what2play data updater (https://github.com/sameggermont/Test1)"
 RANKINGS_URL = "https://raw.githubusercontent.com/beefsack/bgg-ranking-historicals/master/{date}.csv"
-API_URL = "https://boardgamegeek.com/xmlapi2/thing?id={ids}&stats=1"
-OUTPUT = Path(__file__).resolve().parent.parent / "docs" / "data" / "games.json"
+RG_API_URL = "https://recommend.games/api/games/{id}/"
+ROOT = Path(__file__).resolve().parent.parent
+SNAPSHOT = ROOT / "data" / "snapshot_details.json"
+OUTPUT = ROOT / "docs" / "data" / "games.json"
+
+DETAIL_FIELDS = (
+    "minPlayers", "maxPlayers", "bestWith", "minPlaytime", "maxPlaytime",
+    "playtime", "weight", "minAge", "categories", "mechanics", "domains",
+    "description", "image",
+)
 
 
-# Since October 2025 the BGG XML API requires a registered access token:
-# https://boardgamegeek.com/using_the_xml_api
-BGG_TOKEN = os.environ.get("BGG_API_TOKEN", "").strip()
-
-
-def http_get(url, retries=5):
-    headers = {"User-Agent": USER_AGENT}
-    if BGG_TOKEN and "boardgamegeek.com" in url:
-        headers["Authorization"] = f"Bearer {BGG_TOKEN}"
-    for attempt in range(retries):
-        req = urllib.request.Request(url, headers=headers)
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                if resp.status == 202:  # BGG queued the request; try again
-                    time.sleep(10)
-                    continue
-                return resp.read()
-        except urllib.error.HTTPError as e:
-            if e.code == 401:
-                sys.exit(
-                    "ERROR: BoardGameGeek rejected the request (401 Unauthorized).\n"
-                    "The BGG XML API now requires a free access token.\n"
-                    "1. Register at https://boardgamegeek.com/using_the_xml_api\n"
-                    "2. Add the token as a repository secret named BGG_API_TOKEN\n"
-                    "   (GitHub repo -> Settings -> Secrets and variables -> Actions)."
-                )
-            if e.code in (202, 429, 500, 502, 503) and attempt < retries - 1:
-                wait = 15 * (attempt + 1)
-                print(f"  HTTP {e.code}, retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-            raise
-    raise RuntimeError(f"Gave up fetching {url}")
+def http_get(url, timeout=30):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
 
 
 def latest_rankings():
@@ -73,7 +52,7 @@ def latest_rankings():
     for _ in range(30):
         url = RANKINGS_URL.format(date=day.isoformat())
         try:
-            body = http_get(url, retries=1).decode("utf-8")
+            body = http_get(url).decode("utf-8")
             rows = [r for r in csv.DictReader(io.StringIO(body)) if r.get("Rank", "").isdigit()]
             if len(rows) > 1000:
                 print(f"Using rankings from {day.isoformat()} ({len(rows)} ranked games)")
@@ -85,145 +64,72 @@ def latest_rankings():
     raise RuntimeError("No usable rankings CSV found in the last 30 days")
 
 
-def clean_description(raw, limit=500):
-    if not raw:
-        return None
-    text = html.unescape(raw)
-    text = re.sub(r"&#10;|\n", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) > limit:
-        text = text[: limit].rsplit(" ", 1)[0] + "…"
-    return text or None
-
-
-def best_player_count(item):
-    """Read the 'suggested_numplayers' community poll and return the count
-    with the most 'Best' votes, e.g. '4' or '2'."""
-    poll = item.find("poll[@name='suggested_numplayers']")
-    if poll is None:
-        return None
-    best, votes = None, -1
-    for results in poll.findall("results"):
-        n = results.get("numplayers", "")
-        for res in results.findall("result"):
-            if res.get("value") == "Best" and int(res.get("numvotes", 0)) > votes:
-                votes = int(res.get("numvotes", 0))
-                best = n
-    return best
-
-
-# BGG "family" rank names -> human-readable domain labels
-DOMAIN_RANKS = {
-    "strategygames": "Strategy Games",
-    "familygames": "Family Games",
-    "partygames": "Party Games",
-    "thematic": "Thematic Games",
-    "abstracts": "Abstract Games",
-    "wargames": "Wargames",
-    "childrensgames": "Children's Games",
-    "cgs": "Customizable Games",
-}
-
-
-def parse_domains(item):
-    ranks = item.find("statistics/ratings/ranks")
-    if ranks is None:
-        return []
-    out = []
-    for rk in ranks.findall("rank"):
-        if rk.get("type") == "family":
-            label = DOMAIN_RANKS.get(rk.get("name"))
-            if label:
-                out.append(label)
-    return out
-
-
-def parse_item(item):
-    def attr(path, name="value", cast=None):
-        el = item.find(path)
-        if el is None:
-            return None
-        v = el.get(name)
-        if v in (None, "", "0") and cast in (int, float) and path != "yearpublished":
-            return None
-        try:
-            return cast(v) if cast else v
-        except (TypeError, ValueError):
-            return None
-
-    def text(path):
-        el = item.find(path)
-        return el.text if el is not None and el.text else None
-
-    stats = item.find("statistics/ratings")
-    weight = rating = users = None
-    if stats is not None:
-        try:
-            weight = round(float(stats.find("averageweight").get("value")), 2)
-        except (TypeError, ValueError, AttributeError):
-            pass
-        try:
-            rating = round(float(stats.find("average").get("value")), 2)
-        except (TypeError, ValueError, AttributeError):
-            pass
-        try:
-            users = int(stats.find("usersrated").get("value"))
-        except (TypeError, ValueError, AttributeError):
-            pass
-
-    return {
-        "id": int(item.get("id")),
-        "name": attr("name[@type='primary']"),
-        "year": attr("yearpublished", cast=int),
-        "rank": None,  # filled in from the rankings CSV afterwards
-        "rating": rating,
-        "usersRated": users,
-        "thumbnail": text("thumbnail"),
-        "image": text("image"),
-        "minPlayers": attr("minplayers", cast=int),
-        "maxPlayers": attr("maxplayers", cast=int),
-        "bestWith": best_player_count(item),
-        "minPlaytime": attr("minplaytime", cast=int),
-        "maxPlaytime": attr("maxplaytime", cast=int),
-        "playtime": attr("playingtime", cast=int),
-        "weight": weight,
-        "minAge": attr("minage", cast=int),
-        "categories": [l.get("value") for l in item.findall("link[@type='boardgamecategory']")],
-        "mechanics": [l.get("value") for l in item.findall("link[@type='boardgamemechanic']")],
-        "domains": parse_domains(item),
-        "description": clean_description(text("description")),
-    }
+def rg_enrich(game):
+    """Fill complexity and a high-res image from the Recommend.Games API.
+    Returns True on success, False on any failure (caller keeps snapshot data)."""
+    try:
+        raw = json.loads(http_get(RG_API_URL.format(id=game["id"]), timeout=15))
+    except Exception:
+        return False
+    if game["weight"] is None and isinstance(raw.get("complexity"), (int, float)):
+        game["weight"] = round(float(raw["complexity"]), 2)
+    imgs = raw.get("image_url") or []
+    if imgs and isinstance(imgs, list) and isinstance(imgs[0], str):
+        game["image"] = imgs[0]
+    if game["minPlayers"] is None and raw.get("min_players"):
+        game["minPlayers"] = raw["min_players"]
+    if game["maxPlayers"] is None and raw.get("max_players"):
+        game["maxPlayers"] = raw["max_players"]
+    if game["playtime"] is None and raw.get("max_time"):
+        game["playtime"] = raw["max_time"]
+        game["minPlaytime"] = raw.get("min_time")
+        game["maxPlaytime"] = raw.get("max_time")
+    if game["weight"] is None and not game["mechanics"] and raw.get("cooperative"):
+        game["mechanics"] = ["Cooperative Game"]
+    return True
 
 
 def main():
     ranked = latest_rankings()
-    rank_by_id = {int(r["ID"]): int(r["Rank"]) for r in ranked}
-    ids = [int(r["ID"]) for r in ranked]
+    snapshot = json.loads(SNAPSHOT.read_text(encoding="utf-8"))["details"]
 
-    games = {}
-    batches = [ids[i : i + BATCH_SIZE] for i in range(0, len(ids), BATCH_SIZE)]
-    for n, batch in enumerate(batches, 1):
-        print(f"Fetching details batch {n}/{len(batches)}...")
-        xml_body = http_get(API_URL.format(ids=",".join(map(str, batch))))
-        root = ET.fromstring(xml_body)
-        for item in root.findall("item"):
-            g = parse_item(item)
-            g["rank"] = rank_by_id.get(g["id"])
-            games[g["id"]] = g
-        time.sleep(SLEEP_BETWEEN)
+    games = []
+    for r in ranked:
+        gid = int(r["ID"])
+        g = {
+            "id": gid,
+            "name": r["Name"],
+            "year": int(r["Year"]) if r["Year"].lstrip("-").isdigit() else None,
+            "rank": int(r["Rank"]),
+            "rating": float(r["Average"]),
+            "usersRated": int(r["Users rated"]),
+            "thumbnail": r["Thumbnail"],
+        }
+        details = snapshot.get(str(gid), {})
+        for f in DETAIL_FIELDS:
+            g[f] = details.get(f, [] if f in ("categories", "mechanics", "domains") else None)
+        games.append(g)
 
-    ordered = sorted(games.values(), key=lambda g: g["rank"] or 99999)
+    if os.environ.get("RG_ENRICH", "1") != "0":
+        # Probe once; if the API is unreachable don't try 500 times.
+        if rg_enrich(games[0]):
+            print("Recommend.Games API reachable — enriching all games...")
+            ok = 1
+            for g in games[1:]:
+                ok += rg_enrich(g)
+                time.sleep(0.5)  # be polite
+            print(f"Enriched {ok}/{len(games)} games")
+        else:
+            print("Recommend.Games API not reachable — keeping snapshot data")
+
     out = {
         "updated": dt.date.today().isoformat(),
-        "source": "BoardGameGeek XML API2 + BGG daily rankings",
-        "games": ordered,
+        "source": "BGG community ranking mirror + public community datasets + Recommend.Games",
+        "games": games,
     }
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"Wrote {len(ordered)} games to {OUTPUT}")
-    if len(ordered) < TOP_N * 0.9:
-        print("WARNING: fewer games than expected", file=sys.stderr)
-        sys.exit(1)
+    print(f"Wrote {len(games)} games to {OUTPUT}")
 
 
 if __name__ == "__main__":

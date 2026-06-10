@@ -52,32 +52,36 @@ for free via **GitHub Pages**.
 > [Miniature Market](https://www.miniaturemarket.com/affiliate-program),
 > impact.com retailers, or eBay Partner Network.
 
-## Step 3 — Get a BoardGameGeek API token (one-time, free)
-
-The site ships with a working game database, but parts of it come from a 2022
-snapshot. To get fresh, complete data (including high-resolution box art and
-complexity ratings), BGG requires a free access token since October 2025:
-
-1. Log in (or create an account) at <https://boardgamegeek.com>.
-2. Follow the registration instructions at
-   <https://boardgamegeek.com/using_the_xml_api> and copy your access token.
-3. In this GitHub repository go to **Settings → Secrets and variables →
-   Actions → New repository secret**. Name: `BGG_API_TOKEN`, value: your
-   token. Click **Add secret**.
-
-## Step 4 — Keep the game data fresh (automatic)
+## Step 3 — Keep the game data fresh (automatic)
 
 The **Actions** tab of this repository has a workflow called **"Update game
-data"**. It runs automatically every Monday, and you can also run it by hand:
+data"**. It runs automatically every Monday, and you can also run it by hand
+(Actions tab → Update game data → Run workflow).
 
-1. Go to the **Actions** tab → **Update game data** → **Run workflow**.
-2. It downloads BGG's latest top-500 rankings plus full details for each game
-   (player counts, playtime, complexity, categories, descriptions, images)
-   and commits the result to `docs/data/games.json`.
-3. GitHub Pages republishes the site automatically.
+It deliberately does **not** use the BoardGameGeek API (which requires a
+license for commercial use). Instead it combines public sources:
 
-Without the `BGG_API_TOKEN` secret from step 3 the workflow will fail with a
-401 error — that's expected, just complete step 3 first.
+1. The latest top-500 **rankings** from a public community mirror
+   ([beefsack/bgg-ranking-historicals](https://github.com/beefsack/bgg-ranking-historicals)).
+2. A **detail snapshot** committed to this repo (`data/snapshot_details.json`):
+   player counts, playtimes, complexity, categories, mechanics, descriptions
+   and box-art links, originally from public community datasets.
+3. The public **[Recommend.Games](https://recommend.games)** API (an
+   independent project) for fresh complexity scores and high-resolution
+   images — skipped gracefully if unreachable.
+
+The result is committed to `docs/data/games.json` and GitHub Pages
+republishes the site automatically.
+
+### Price tiers
+
+`docs/data/prices.json` maps every game to a typical-price bucket
+(Under $25 / $25–60 / $60–100 / $100+). About 190 are based on known retail
+prices of famous titles; the rest are estimated from the game's type. The
+data robot never overwrites this file, so you can refine buckets by hand —
+just edit the `tier` number (1–4) for a game. Later, once your Amazon
+Associates account qualifies for the Product Advertising API, these can be
+replaced with live prices.
 
 ## ⚠️ Things to know before this makes real money
 
