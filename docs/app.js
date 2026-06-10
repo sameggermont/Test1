@@ -179,12 +179,51 @@
   // ── Rendering ───────────────────────────────────────────────────────
   const $ = (sel) => document.querySelector(sel);
 
-  function amazonUrl(g) {
+  // Figure out which country store fits the visitor: browser language
+  // region first (e.g. "nl-BE" -> BE), timezone as a fallback.
+  function detectMarket() {
     const cfg = window.W2P_CONFIG || {};
-    const q = encodeURIComponent(`${g.name} board game`);
-    const tag = encodeURIComponent(cfg.amazonTag || "");
-    return `https://${cfg.amazonDomain || "www.amazon.com"}/s?k=${q}&tag=${tag}`;
+    const markets = cfg.amazonMarkets || {};
+    const regionToMarket = {
+      US: "US", CA: "US", GB: "UK", IE: "UK", DE: "DE", AT: "DE",
+      FR: "FR", BE: "BE", NL: "NL",
+    };
+    let region = null;
+    for (const lang of navigator.languages || [navigator.language]) {
+      const m = /-([a-z]{2})\b/i.exec(lang || "");
+      if (m) { region = m[1].toUpperCase(); break; }
+    }
+    if (!region) {
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || "");
+      const tzMap = {
+        "Europe/Amsterdam": "NL", "Europe/Brussels": "BE",
+        "Europe/Berlin": "DE", "Europe/Vienna": "DE",
+        "Europe/Paris": "FR", "Europe/London": "UK", "Europe/Dublin": "UK",
+      };
+      region = tzMap[tz] || (tz.startsWith("America/") ? "US" : null);
+    }
+    const key = regionToMarket[region] || cfg.amazonDefault || "US";
+    const market = markets[key] || markets[cfg.amazonDefault] || { domain: "www.amazon.com", tag: "" };
+    return { key, domain: market.domain, tag: market.tag };
   }
+
+  let market = { key: "US", domain: "www.amazon.com", tag: "" };
+
+  function amazonUrl(g) {
+    const q = encodeURIComponent(`${g.name} board game`);
+    const tag = market.tag ? `&tag=${encodeURIComponent(market.tag)}` : "";
+    return `https://${market.domain}/s?k=${q}${tag}`;
+  }
+
+  function bolUrl(g) {
+    const cfg = window.W2P_CONFIG || {};
+    const country = market.key === "BE" ? "be" : "nl";
+    const target = `https://www.bol.com/${country}/nl/s/?searchtext=${encodeURIComponent(g.name + " bordspel")}`;
+    if (!cfg.bolSiteId) return target;
+    return `https://partner.bol.com/click/click?p=1&t=url&s=${encodeURIComponent(cfg.bolSiteId)}&url=${encodeURIComponent(target)}&f=TXL`;
+  }
+
+  const showBol = () => market.key === "BE" || market.key === "NL";
 
   function card(g, spotlight) {
     const img = g.image || g.thumbnail || "";
@@ -222,7 +261,8 @@
           <div class="badges">${badges}</div>
           ${g.description ? `<p class="desc">${esc(g.description)}</p>` : ""}
           <div class="card-actions">
-            <a class="btn buy" href="${amazonUrl(g)}" target="_blank" rel="noopener sponsored">Buy on Amazon</a>
+            <a class="btn buy" href="${amazonUrl(g)}" target="_blank" rel="noopener sponsored">Amazon</a>
+            ${showBol() ? `<a class="btn bol" href="${bolUrl(g)}" target="_blank" rel="noopener sponsored">bol.com</a>` : ""}
             <a class="btn bgg" href="https://boardgamegeek.com/boardgame/${g.id}" target="_blank" rel="noopener">BGG</a>
           </div>
         </div>
@@ -299,6 +339,7 @@
   }
 
   function init() {
+    market = detectMarket();
     renderMoodChips();
     markActive($("#mood-chips"), "mood", "any");
 

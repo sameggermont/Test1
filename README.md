@@ -36,19 +36,38 @@ for free via **GitHub Pages**.
 4. Click **Save**. After a minute or two your site is live at
    `https://sameggermont.github.io/Test1/`.
 
-## Step 2 — Start earning: get an Amazon affiliate ID
+## Step 2 — Start earning: Amazon + bol.com
+
+The site detects each visitor's country (from their browser language /
+timezone) and sends them to the right store: Americans to amazon.com,
+Germans to amazon.de, Belgians to amazon.com.be — and Dutch/Belgian
+visitors additionally get a **bol.com** button.
+
+### Amazon Associates
 
 1. Sign up (free) at <https://affiliate-program.amazon.com>.
    You'll need to describe your site — link to the GitHub Pages URL above.
 2. Amazon gives you a **tracking ID** that looks like `yourname-20`.
-3. Edit `docs/config.js` (you can do this right in the GitHub website — open
-   the file, click the ✏️ pencil icon, change `YOURTAG-20` to your ID, commit).
-4. Done. Every "Buy on Amazon" click now carries your ID, and you earn a
-   commission (~3% on toys/games) on anything the visitor buys.
+3. **Tracking IDs are per country.** A tag from amazon.com earns nothing on
+   amazon.nl. Sign up for each marketplace that matters to you (at minimum
+   your home market) and paste each tag into `docs/config.js` (edit it right
+   on GitHub with the ✏️ pencil icon). Countries without a tag still get
+   working links — they just don't earn yet. Amazon's
+   [OneLink](https://affiliate-program.amazon.com/help/topic/t405) tool is an
+   official alternative once you have several marketplace accounts.
+4. Amazon requires the affiliate disclosure (already in the footer) and ~3
+   sales in your first 180 days to keep the account.
 
-> **Important:** Amazon requires an affiliate disclosure on the site (already
-> included in the footer) and requires you to make ~3 sales in the first 180
-> days to stay in the program. Other programs worth adding later:
+### bol.com Partner Program (Netherlands & Belgium)
+
+1. Sign up (free) at <https://affiliate.bol.com> — open to individuals,
+   approval requires your site to have ~10+ items (this site has 500).
+2. Commission is roughly 4% on toys & games, with a 5-day cookie.
+3. After approval, find your **site ID** in the partner dashboard (it's the
+   `s=` number in links made by their link generator) and paste it as
+   `bolSiteId` in `docs/config.js`.
+
+> Other programs worth adding later:
 > [Miniature Market](https://www.miniaturemarket.com/affiliate-program),
 > impact.com retailers, or eBay Partner Network.
 

@@ -1,15 +1,31 @@
 // ─────────────────────────────────────────────────────────────────────────
-//  what2play configuration — this is the ONLY file you need to edit
-//  to start earning affiliate revenue.
+//  what2play configuration — the ONLY file you need to edit to start
+//  earning affiliate revenue.
 //
-//  1. Sign up at https://affiliate-program.amazon.com (free).
-//  2. You'll receive a "tracking ID" that looks like:  yourname-20
-//  3. Replace the value of amazonTag below with your tracking ID.
+//  AMAZON — https://affiliate-program.amazon.com
+//  Amazon tracking IDs are PER COUNTRY: a tag from amazon.com earns
+//  nothing on amazon.nl, and vice versa. Sign up separately for each
+//  marketplace you care about (each takes minutes once the first is
+//  approved) and paste each tag below. Visitors are automatically sent
+//  to the Amazon store of their own country; countries without a tag
+//  still get a working link, it just doesn't earn commission yet.
 //
-//  Until you change it, the Buy buttons still work — they just don't
-//  credit anyone for the sale.
+//  BOL.COM — https://affiliate.bol.com  (Netherlands & Belgium)
+//  Sign up for the Bol Partner Program, find your site ID
+//  ("site-id" in the links their link generator makes) and paste it
+//  below. Dutch and Belgian visitors then see a bol.com button next
+//  to the Amazon one.
 // ─────────────────────────────────────────────────────────────────────────
 window.W2P_CONFIG = {
-  amazonTag: "YOURTAG-20",        // ← put your Amazon Associates tracking ID here
-  amazonDomain: "www.amazon.com", // use "www.amazon.co.uk", "www.amazon.de", etc. for other markets
+  amazonMarkets: {
+    US: { domain: "www.amazon.com",    tag: "YOURTAG-20" },
+    UK: { domain: "www.amazon.co.uk",  tag: "" },
+    DE: { domain: "www.amazon.de",     tag: "" },
+    FR: { domain: "www.amazon.fr",     tag: "" },
+    BE: { domain: "www.amazon.com.be", tag: "" },
+    NL: { domain: "www.amazon.nl",     tag: "" },
+  },
+  amazonDefault: "US",   // market used when we can't tell where the visitor is
+
+  bolSiteId: "",         // ← your bol.com partner site ID, e.g. "1234567"
 };

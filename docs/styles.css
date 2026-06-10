@@ -148,7 +148,9 @@ body {
 }
 .btn.buy { background: var(--accent); color: #1a1400; }
 .btn.buy:hover { filter: brightness(1.1); }
-.btn.bgg { background: var(--panel-2); color: var(--text); border: 1px solid #2c3140; }
+.btn.bol { background: #0050d3; color: #fff; }
+.btn.bol:hover { filter: brightness(1.15); }
+.btn.bgg { background: var(--panel-2); color: var(--text); border: 1px solid #2c3140; flex: 0 0 auto; padding: 9px 12px; }
 .btn.bgg:hover { border-color: var(--muted); }
 
 .empty { text-align: center; color: var(--muted); padding: 60px 0; }
