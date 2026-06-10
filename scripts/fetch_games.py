@@ -112,6 +112,32 @@ def best_player_count(item):
     return best
 
 
+# BGG "family" rank names -> human-readable domain labels
+DOMAIN_RANKS = {
+    "strategygames": "Strategy Games",
+    "familygames": "Family Games",
+    "partygames": "Party Games",
+    "thematic": "Thematic Games",
+    "abstracts": "Abstract Games",
+    "wargames": "Wargames",
+    "childrensgames": "Children's Games",
+    "cgs": "Customizable Games",
+}
+
+
+def parse_domains(item):
+    ranks = item.find("statistics/ratings/ranks")
+    if ranks is None:
+        return []
+    out = []
+    for rk in ranks.findall("rank"):
+        if rk.get("type") == "family":
+            label = DOMAIN_RANKS.get(rk.get("name"))
+            if label:
+                out.append(label)
+    return out
+
+
 def parse_item(item):
     def attr(path, name="value", cast=None):
         el = item.find(path)
@@ -164,6 +190,7 @@ def parse_item(item):
         "minAge": attr("minage", cast=int),
         "categories": [l.get("value") for l in item.findall("link[@type='boardgamecategory']")],
         "mechanics": [l.get("value") for l in item.findall("link[@type='boardgamemechanic']")],
+        "domains": parse_domains(item),
         "description": clean_description(text("description")),
     }
 

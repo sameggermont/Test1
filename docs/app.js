@@ -13,6 +13,7 @@
   const state = {
     games: [],
     mood: "any",
+    subMood: "all",
     players: "any",
     time: "any",
     weight: "any",
@@ -20,53 +21,118 @@
     visible: PAGE_SIZE,
   };
 
-  // ── Mood definitions ────────────────────────────────────────────────
-  // Each mood is a predicate over a game's data. Games with missing data
-  // for a field are not excluded by that field (we can't know).
-  const MOODS = {
-    any: () => true,
-    chill: (g) =>
-      okOrNull(g.weight, (w) => w <= 2.4) &&
-      !hasAny(g.categories, ["Wargame"]),
-    brainy: (g) => okOrNull(g.weight, (w) => w >= 3.0),
-    party: (g) =>
-      hasAny(g.categories, ["Party Game", "Humor", "Trivia", "Word Game"]) ||
-      (okOrNull(g.maxPlayers, (n) => n >= 6) && okOrNull(g.weight, (w) => w <= 2.2) && g.maxPlayers !== null),
-    coop: (g) => hasAny(g.mechanics, ["Cooperative Game"]),
-    cutthroat: (g) =>
-      !hasAny(g.mechanics, ["Cooperative Game"]) &&
-      (hasAny(g.mechanics, [
-        "Take That",
-        "Area Majority / Influence",
-        "Auction/Bidding",
-        "Negotiation",
-        "Trading",
-        "Player Elimination",
-        "Betting and Bluffing",
-      ]) ||
-        hasAny(g.categories, ["Negotiation", "Bluffing", "Wargame", "Fighting"])),
-    quick: (g) => okOrNull(playMinutes(g), (t) => t !== null && t <= 30) && playMinutes(g) !== null,
-    epic: (g) =>
-      okOrNull(playMinutes(g), (t) => t !== null && t >= 120) ||
-      hasAny(g.mechanics, ["Legacy Game", "Scenario / Mission / Campaign Game"]),
-  };
-
+  // ── Helpers ─────────────────────────────────────────────────────────
   function hasAny(list, wanted) {
     return Array.isArray(list) && wanted.some((w) => list.includes(w));
-  }
-
-  // If the value is null/undefined (data not loaded yet), don't filter it out.
-  function okOrNull(value, predicate) {
-    return value === null || value === undefined ? true : predicate(value);
   }
 
   function playMinutes(g) {
     return g.playtime ?? g.maxPlaytime ?? g.minPlaytime ?? null;
   }
 
+  const isCoop = (g) => hasAny(g.mechanics, ["Cooperative Game"]);
+  const isCampaign = (g) =>
+    hasAny(g.mechanics, ["Legacy Game", "Scenario / Mission / Campaign Game", "Campaign / Battle Card Driven"]);
+  const isPartyish = (g) =>
+    hasAny(g.domains, ["Party Games"]) ||
+    hasAny(g.categories, ["Party Game", "Humor", "Trivia", "Word Game"]) ||
+    (g.maxPlayers !== null && g.maxPlayers >= 6 && g.weight !== null && g.weight <= 2.2);
+
+  // ── Mood definitions (two tiers) ────────────────────────────────────
+  // Each mood has a predicate; optional `subs` refine it further.
+  // Moods built on complexity (weight) require the value to be known so
+  // "chill" and "deep strategy" never show the same unknown games.
+  const MOODS = {
+    any: { label: "Surprise me", test: () => true },
+    chill: {
+      label: "😌 Chill & easygoing",
+      test: (g) => g.weight !== null && g.weight <= 2.4 && !hasAny(g.categories, ["Wargame"]),
+      subs: {
+        cozy: { label: "Super light & cozy", test: (g) => g.weight <= 1.8 },
+        family: { label: "Family night", test: (g) => hasAny(g.domains, ["Family Games", "Children's Games"]) },
+        calmcoop: { label: "Relaxed co-op", test: isCoop },
+        solo: { label: "Playing solo", test: (g) => hasAny(g.mechanics, ["Solo / Solitaire Game"]) },
+      },
+    },
+    brainy: {
+      label: "🧠 Deep strategy",
+      test: (g) => g.weight !== null && g.weight >= 3.0,
+      subs: {
+        heavy: { label: "Heavyweight euro", test: (g) => g.weight >= 3.5 && hasAny(g.domains, ["Strategy Games"]) },
+        economic: { label: "Build an empire", test: (g) => hasAny(g.categories, ["Economic", "Industry / Manufacturing", "Civilization"]) },
+        thematic: { label: "Rich theme", test: (g) => hasAny(g.domains, ["Thematic Games"]) },
+        duel: { label: "1-on-1 brain duel", test: (g) => g.maxPlayers === 2 || g.bestWith === "2" },
+      },
+    },
+    party: {
+      label: "🎉 Party time",
+      test: isPartyish,
+      subs: {
+        laughs: { label: "Big laughs", test: (g) => hasAny(g.categories, ["Humor"]) },
+        bluff: { label: "Bluffing & deduction", test: (g) => hasAny(g.categories, ["Bluffing", "Deduction"]) },
+        words: { label: "Words & trivia", test: (g) => hasAny(g.categories, ["Word Game", "Trivia"]) },
+        crowd: { label: "Big group (8+)", test: (g) => g.maxPlayers !== null && g.maxPlayers >= 8 },
+      },
+    },
+    coop: {
+      label: "🤝 Us vs the game",
+      test: isCoop,
+      subs: {
+        campaign: { label: "Ongoing campaign", test: isCampaign },
+        light: { label: "Easy to learn", test: (g) => g.weight !== null && g.weight <= 2.3 },
+        challenge: { label: "Brutal challenge", test: (g) => g.weight !== null && g.weight >= 2.8 },
+        solo: { label: "Works solo too", test: (g) => hasAny(g.mechanics, ["Solo / Solitaire Game"]) },
+      },
+    },
+    cutthroat: {
+      label: "⚔️ Competitive & cutthroat",
+      test: (g) =>
+        !isCoop(g) &&
+        (hasAny(g.mechanics, [
+          "Take That",
+          "Area Majority / Influence",
+          "Auction/Bidding",
+          "Negotiation",
+          "Trading",
+          "Player Elimination",
+          "Betting and Bluffing",
+        ]) ||
+          hasAny(g.categories, ["Negotiation", "Bluffing", "Wargame", "Fighting"])),
+      subs: {
+        duel: { label: "Head-to-head duel", test: (g) => g.maxPlayers === 2 },
+        negotiate: { label: "Negotiate & betray", test: (g) => hasAny(g.categories, ["Negotiation"]) || hasAny(g.mechanics, ["Negotiation", "Trading"]) },
+        war: { label: "Open warfare", test: (g) => hasAny(g.categories, ["Wargame", "Fighting"]) || hasAny(g.domains, ["Wargames"]) },
+        territory: { label: "Fight for territory", test: (g) => hasAny(g.mechanics, ["Area Majority / Influence"]) },
+      },
+    },
+    quick: {
+      label: "⚡ Quick filler",
+      test: (g) => playMinutes(g) !== null && playMinutes(g) <= 30,
+      subs: {
+        micro: { label: "15 min or less", test: (g) => playMinutes(g) <= 15 },
+        social: { label: "Quick & social", test: isPartyish },
+        thinky: { label: "Quick but thinky", test: (g) => g.weight !== null && g.weight >= 2.0 },
+      },
+    },
+    epic: {
+      label: "🐉 Epic adventure",
+      test: (g) => (playMinutes(g) !== null && playMinutes(g) >= 120) || isCampaign(g),
+      subs: {
+        campaign: { label: "Campaign / legacy", test: isCampaign },
+        fantasy: { label: "Fantasy worlds", test: (g) => hasAny(g.categories, ["Fantasy", "Adventure", "Mythology"]) },
+        scifi: { label: "Sci-fi & space", test: (g) => hasAny(g.categories, ["Science Fiction", "Space Exploration"]) },
+        allnight: { label: "All-night monster", test: (g) => playMinutes(g) !== null && playMinutes(g) >= 180 },
+      },
+    },
+  };
+
   // ── Filtering ───────────────────────────────────────────────────────
   function matches(g) {
-    if (!MOODS[state.mood](g)) return false;
+    const mood = MOODS[state.mood];
+    if (!mood.test(g)) return false;
+    if (state.subMood !== "all" && mood.subs && mood.subs[state.subMood] && !mood.subs[state.subMood].test(g)) {
+      return false;
+    }
 
     if (state.players !== "any") {
       const n = Number(state.players);
@@ -85,14 +151,15 @@
       }
     }
 
-    if (state.weight !== "any" && g.weight !== null) {
+    if (state.weight !== "any") {
+      if (g.weight === null) return false; // complexity matters here: skip unknowns
       if (state.weight === "light" && g.weight > 2.0) return false;
       if (state.weight === "medium" && (g.weight <= 2.0 || g.weight > 3.2)) return false;
       if (state.weight === "heavy" && g.weight <= 3.2) return false;
     }
 
     if (state.query) {
-      const hay = [g.name, g.description, ...(g.categories || []), ...(g.mechanics || [])]
+      const hay = [g.name, g.description, ...(g.categories || []), ...(g.mechanics || []), ...(g.domains || [])]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -114,6 +181,10 @@
 
   function card(g, spotlight) {
     const img = g.image || g.thumbnail || "";
+    // If the big image fails to load, quietly fall back to the thumbnail.
+    const fallback = g.image && g.thumbnail && g.image !== g.thumbnail
+      ? ` onerror="this.onerror=null;this.src='${esc(g.thumbnail)}'"`
+      : "";
     const players =
       g.minPlayers !== null
         ? g.minPlayers === g.maxPlayers
@@ -135,7 +206,7 @@
 
     return `
       <article class="card${spotlight ? " spotlight" : ""}">
-        ${img ? `<img class="card-img" loading="lazy" src="${img}" alt="${esc(g.name)} box art">` : `<div class="card-img"></div>`}
+        ${img ? `<img class="card-img" loading="lazy" src="${esc(img)}" alt="${esc(g.name)} box art"${fallback}>` : `<div class="card-img"></div>`}
         <div class="card-body">
           <h3>${esc(g.name)} <span class="year">${g.year ?? ""}</span></h3>
           <div class="badges">${badges}</div>
@@ -173,25 +244,65 @@
   }
 
   // ── Wiring ──────────────────────────────────────────────────────────
-  function wireChips(containerId, attr, key) {
+  function chipButton(value, label, attr) {
+    return `<button class="chip" data-${attr}="${value}">${label}</button>`;
+  }
+
+  function renderMoodChips() {
+    $("#mood-chips").innerHTML = Object.entries(MOODS)
+      .map(([key, m]) => chipButton(key, m.label, "mood"))
+      .join("");
+  }
+
+  function renderSubMoodChips() {
+    const box = $("#submood-chips");
+    const mood = MOODS[state.mood];
+    if (!mood.subs) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML =
+      chipButton("all", "All of it", "sub") +
+      Object.entries(mood.subs)
+        .map(([key, s]) => chipButton(key, s.label, "sub"))
+        .join("");
+    markActive(box, "sub", state.subMood);
+  }
+
+  function markActive(box, attr, value) {
+    box.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c.dataset[attr] === value));
+  }
+
+  function wireChips(containerId, attr, key, onChange) {
     const box = document.getElementById(containerId);
     box.addEventListener("click", (e) => {
       const btn = e.target.closest(".chip");
-      if (!btn) return;
-      box.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
-      btn.classList.add("active");
+      if (!btn || btn.dataset[attr] === undefined) return;
       state[key] = btn.dataset[attr];
       state.visible = PAGE_SIZE;
+      markActive(box, attr, state[key]);
+      if (onChange) onChange();
       render();
     });
-    box.querySelector(".chip").classList.add("active"); // default = first ("any")
   }
 
   function init() {
-    wireChips("mood-chips", "mood", "mood");
+    renderMoodChips();
+    markActive($("#mood-chips"), "mood", "any");
+
+    wireChips("mood-chips", "mood", "mood", () => {
+      state.subMood = "all";
+      renderSubMoodChips();
+    });
+    wireChips("submood-chips", "sub", "subMood");
     wireChips("player-chips", "players", "players");
     wireChips("time-chips", "time", "time");
     wireChips("weight-chips", "weight", "weight");
+    markActive($("#player-chips"), "players", "any");
+    markActive($("#time-chips"), "time", "any");
+    markActive($("#weight-chips"), "weight", "any");
 
     $("#search-box").addEventListener("input", (e) => {
       state.query = e.target.value.trim();

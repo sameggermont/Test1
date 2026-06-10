@@ -20,17 +20,13 @@
     <section class="filters" aria-label="Game filters">
 
       <div class="filter-group">
+        <input type="search" id="search-box" placeholder="Search by name, theme or mechanic (e.g. “dice”, “zombies”, “trading”)">
+      </div>
+
+      <div class="filter-group">
         <h2>What's the mood?</h2>
-        <div class="chips" id="mood-chips">
-          <button class="chip" data-mood="any">Surprise me</button>
-          <button class="chip" data-mood="chill">😌 Chill &amp; easygoing</button>
-          <button class="chip" data-mood="brainy">🧠 Deep strategy</button>
-          <button class="chip" data-mood="party">🎉 Party time</button>
-          <button class="chip" data-mood="coop">🤝 Us vs the game</button>
-          <button class="chip" data-mood="cutthroat">⚔️ Competitive &amp; cutthroat</button>
-          <button class="chip" data-mood="quick">⚡ Quick filler</button>
-          <button class="chip" data-mood="epic">🐉 Epic adventure</button>
-        </div>
+        <div class="chips" id="mood-chips"></div>
+        <div class="chips sub" id="submood-chips" hidden></div>
       </div>
 
       <div class="filter-row">
@@ -69,9 +65,6 @@
         </div>
       </div>
 
-      <div class="filter-group">
-        <input type="search" id="search-box" placeholder="…or search by name, theme or mechanic (e.g. “dice”, “zombies”, “trading”)">
-      </div>
     </section>
 
     <section aria-label="Results">

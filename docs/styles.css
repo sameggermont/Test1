@@ -55,6 +55,10 @@ body {
 .chip:hover { border-color: var(--accent); }
 .chip.active { background: var(--accent); border-color: var(--accent); color: #1a1400; font-weight: 600; }
 
+.chips.sub { margin-top: 10px; padding-left: 12px; border-left: 3px solid var(--accent-2); }
+.chips.sub .chip { font-size: 0.85rem; padding: 6px 13px; }
+.chips.sub .chip.active { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+
 #search-box {
   width: 100%;
   background: var(--panel-2);
