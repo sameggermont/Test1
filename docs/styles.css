@@ -144,6 +144,7 @@ body {
 .badge.rank { background: var(--accent); color: #1a1400; font-weight: 700; }
 .badge.rating { color: var(--green); }
 .badge.price { color: var(--accent); font-weight: 700; cursor: help; }
+.badge.niche { background: #4a2c12; color: #ffb27a; cursor: help; }
 
 .desc {
   font-size: 0.85rem;

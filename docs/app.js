@@ -55,8 +55,8 @@
       key: "age",
       label: "Age",
       options: [
-        { id: "young", label: "Young kids 5–8", test: (g) => g.minAge !== null && g.minAge <= 8 },
-        { id: "older", label: "Older kids 9–12", test: (g) => g.minAge !== null && g.minAge >= 9 && g.minAge <= 12 },
+        { id: "young", label: "Young kids 5–8", test: (g) => dom(g, "Children's Games") && g.minAge !== null && g.minAge <= 8 },
+        { id: "older", label: "Older kids 9–12", test: (g) => g.minAge !== null && g.minAge >= 9 && g.minAge <= 12 && (dom(g, "Children's Games", "Family Games") || (g.weight !== null && g.weight <= 2.2)) },
         { id: "teens", label: "Teens", test: (g) => g.minAge !== null && g.minAge >= 13 && g.minAge <= 15 },
         { id: "mixed", label: "Mixed", test: (g) => dom(g, "Family Games") },
         { id: "adults", label: "Adults only", test: (g) => (g.minAge !== null && g.minAge >= 16) || cat(g, "Mature / Adult") },
@@ -159,6 +159,19 @@
     return p ? p.tier : null;
   }
 
+  // Best-effort "may be hard to find at mainstream shops (Amazon/bol.com)".
+  // We can't query retailer stock without their paid APIs, so this is a
+  // popularity proxy: niche titles (few BGG owners, well down the ranking)
+  // that aren't kids/family games — which ARE stocked widely despite low
+  // BGG ownership.
+  function isHardToFind(g) {
+    return (
+      g.owned !== null && g.owned !== undefined && g.owned < 1500 &&
+      !dom(g, "Children's Games", "Family Games") &&
+      (g.rank === null || g.rank > 800)
+    );
+  }
+
   // ── Filtering ───────────────────────────────────────────────────────
   function matches(g) {
     for (const f of FILTERS) {
@@ -250,6 +263,7 @@
       time ? `<span class="badge">⏱ ${time}</span>` : "",
       weight ? `<span class="badge">🧠 ${weight}</span>` : "",
       tier ? `<span class="badge price" title="typically ${PRICE_LABELS[tier]}">${"$".repeat(tier)}</span>` : "",
+      isHardToFind(g) ? `<span class="badge niche" title="Niche title — mainstream shops like Amazon or bol.com may not stock it">⚠ Hard to find</span>` : "",
     ].join("");
 
     return `
