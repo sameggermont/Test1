@@ -43,6 +43,12 @@ csv.field_size_limit(10_000_000)
 
 TOP_N = 2000
 KIDS_N = 250
+NEW_N = 200          # recent releases (last 3 years) added beyond the top 2000
+NEW_SINCE_YEARS = 3  # "last 3 years" window for new releases
+KNOWN_DOMAINS = {
+    "Strategy Games", "Family Games", "Party Games", "Thematic Games",
+    "Abstract Games", "Wargames", "Children's Games", "Customizable Games",
+}
 USER_AGENT = "what2play data updater (https://github.com/sameggermont/Test1)"
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "docs" / "data" / "games.json"
@@ -200,22 +206,60 @@ def build_game(gid, rank_row, tt, kg, lu, kids_flag):
     }
 
 
+def as_names(v):
+    """Recommend.Games list fields may be plain strings or {name:...} dicts."""
+    out = []
+    if isinstance(v, list):
+        for x in v:
+            if isinstance(x, str):
+                out.append(x)
+            elif isinstance(x, dict):
+                n = x.get("name") or x.get("value")
+                if n:
+                    out.append(str(n))
+    elif isinstance(v, str):
+        out.append(v)
+    return out
+
+
 def rg_enrich(game):
-    """High-res image + missing complexity from Recommend.Games. Returns
-    True on a reachable response, False on failure."""
+    """Fill gaps from the public Recommend.Games API (high-res image,
+    complexity, players, and — crucially for brand-new releases not in the
+    community datasets — categories/mechanics/domains/description).
+    Community data already present is never overwritten. Returns True on a
+    reachable response, False on failure."""
     try:
         raw = json.loads(http_get(RG_API_URL.format(id=game["id"]), timeout=15, retries=1))
     except Exception:
         return False
-    imgs = raw.get("image_url") or []
-    if isinstance(imgs, list) and imgs and isinstance(imgs[0], str):
-        game["image"] = imgs[0]
+    imgs = raw.get("image_url")
+    names = as_names(imgs)
+    if names:
+        game["image"] = names[0]
     if game["weight"] is None and isinstance(raw.get("complexity"), (int, float)) and raw["complexity"]:
         game["weight"] = round(float(raw["complexity"]), 2)
     if game["minPlayers"] is None and raw.get("min_players"):
-        game["minPlayers"] = raw["min_players"]
+        game["minPlayers"] = to_int(raw["min_players"])
     if game["maxPlayers"] is None and raw.get("max_players"):
-        game["maxPlayers"] = raw["max_players"]
+        game["maxPlayers"] = to_int(raw["max_players"])
+    if game["minAge"] is None and raw.get("min_age"):
+        game["minAge"] = to_int(raw["min_age"])
+    if game["playtime"] is None and raw.get("max_time"):
+        game["playtime"] = to_int(raw.get("max_time"))
+        game["minPlaytime"] = to_int(raw.get("min_time"))
+        game["maxPlaytime"] = to_int(raw.get("max_time"))
+    if not game["categories"]:
+        game["categories"] = as_names(raw.get("category"))
+    if not game["mechanics"]:
+        game["mechanics"] = as_names(raw.get("mechanic"))
+    if not game["domains"]:
+        game["domains"] = [d for d in as_names(raw.get("game_type")) if d in KNOWN_DOMAINS]
+    if not game["description"] and raw.get("description"):
+        game["description"] = clean_desc(raw["description"])
+    if raw.get("cooperative") and "Cooperative Game" not in game["mechanics"]:
+        game["mechanics"].append("Cooperative Game")
+    if game["rating"] is None and raw.get("avg_rating"):
+        game["rating"] = round(float(raw["avg_rating"]), 2)
     return True
 
 
@@ -267,7 +311,7 @@ def main():
     lu = index_by_id(read_csv(LUNADU_URL), "game_id")
     print(f"  TidyTuesday {len(tt)}, Kaggle {len(kg)}, lunadu {len(lu)}")
 
-    rank_by_id = {to_int(r["ID"]): r for r in rankings[:TOP_N]}
+    row_by_id = {to_int(r["ID"]): r for r in rankings[:TOP_N]}
 
     # children's games: best-ranked titles in the Children's Games domain
     def kg_rank(r):
@@ -278,16 +322,30 @@ def main():
     )[:KIDS_N]
     kid_ids = {to_int(r["ID"]) for r in kids_rows if to_int(r["ID"])}
 
-    all_ids = list(rank_by_id.keys()) + [i for i in kid_ids if i not in rank_by_id]
-    games = [build_game(i, rank_by_id.get(i), tt, kg, lu, i in kid_ids) for i in all_ids]
+    # recent releases (last 3 years) that haven't yet climbed into the top
+    # 2000, so the catalogue stays current. Best-ranked recent titles first.
+    year_cut = dt.date.today().year - (NEW_SINCE_YEARS - 1)
+    recent = [r for r in rankings
+              if (to_int(r.get("Year")) or 0) >= year_cut
+              and to_int(r["ID"]) not in row_by_id
+              and to_int(r["ID"]) not in kid_ids]
+    recent.sort(key=lambda r: int(r["Rank"]))
+    recent_ids = set()
+    for r in recent[:NEW_N]:
+        row_by_id[to_int(r["ID"])] = r
+        recent_ids.add(to_int(r["ID"]))
+
+    all_ids = list(row_by_id.keys()) + [i for i in kid_ids if i not in row_by_id]
+    games = [build_game(i, row_by_id.get(i), tt, kg, lu, i in kid_ids) for i in all_ids]
     games = [g for g in games if g["name"]]
-    print(f"Assembled {len(games)} games ({len(kid_ids)} children's games)")
+    print(f"Assembled {len(games)} games "
+          f"({len(kid_ids)} children's, {len(recent_ids)} recent releases)")
 
     if os.environ.get("RG_ENRICH", "1") != "0":
         probe = next((g for g in games if g["image"] is None), games[0])
         if rg_enrich(probe):
             print("Recommend.Games reachable — upgrading images / filling gaps...")
-            todo = [g for g in games if g["image"] is None or g["weight"] is None or g is probe]
+            todo = [g for g in games if g["image"] is None or g["weight"] is None or not g["mechanics"] or g is probe]
             ok = 0
             for g in todo:
                 ok += rg_enrich(g)

@@ -92,6 +92,11 @@ body {
 .chip:hover { border-color: var(--accent); }
 .chip.active { background: var(--accent); border-color: var(--accent); color: #1a1400; font-weight: 600; }
 
+/* The "Show" (Tried & tested / New additions) selector is the headline
+   control: a touch larger, and highlighted in the secondary accent. */
+.chips[data-row="collection"] .chip { font-size: 0.95rem; padding: 9px 18px; }
+.chips[data-row="collection"] .chip.active { background: var(--accent-2); border-color: var(--accent-2); color: #fff; }
+
 #search-box {
   width: 100%;
   background: var(--panel-2);

@@ -14,6 +14,8 @@
   "use strict";
 
   const PAGE_SIZE = 24;
+  const NEW_FROM = new Date().getFullYear() - 2; // "new additions" = last 3 years
+  const TRIED_MIN_RATINGS = 3000;                // "tried & tested" = well-played
 
   // ── Small predicate helpers ─────────────────────────────────────────
   function hasAny(list, wanted) {
@@ -40,6 +42,14 @@
   // ── Filter dimensions (mirrors the on-screen rows) ──────────────────
   // Each option's `test(g)` returns true when the game matches that chip.
   const FILTERS = [
+    {
+      key: "collection",
+      label: "Show",
+      options: [
+        { id: "tried", label: "🏆 Tried & tested", test: (g) => g.usersRated !== null && g.usersRated >= TRIED_MIN_RATINGS },
+        { id: "new", label: "✨ New additions", test: (g) => g.year !== null && g.year >= NEW_FROM },
+      ],
+    },
     {
       key: "players",
       label: "Players",
