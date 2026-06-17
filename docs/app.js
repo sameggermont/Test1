@@ -149,6 +149,7 @@
     games: [],
     prices: {},
     query: "",
+    country: "OTHER",
     visible: PAGE_SIZE,
     // one Set of selected option-ids per filter dimension
     active: Object.fromEntries(FILTERS.map((f) => [f.key, new Set()])),
@@ -194,13 +195,20 @@
     return state.query !== "" || FILTERS.some((f) => state.active[f.key].size > 0);
   }
 
-  // ── Geo-aware affiliate links ───────────────────────────────────────
+  // ── Country selector & affiliate links ─────────────────────────────
   const $ = (sel) => document.querySelector(sel);
 
-  function detectMarket() {
-    const cfg = window.W2P_CONFIG || {};
-    const markets = cfg.amazonMarkets || {};
-    const regionToMarket = { US: "US", CA: "US", GB: "UK", IE: "UK", DE: "DE", AT: "DE", FR: "FR", BE: "BE", NL: "NL" };
+  // The visitor picks their country at the top of the page. It decides
+  // which Amazon store the buy link points to, and whether the bol.com
+  // button (Netherlands & Belgium only) is shown.
+  const COUNTRIES = {
+    BE: { label: "🇧🇪 Belgium", amazon: "BE", bol: "be" },
+    NL: { label: "🇳🇱 Netherlands", amazon: "NL", bol: "nl" },
+    DE: { label: "🇩🇪 Germany", amazon: "DE", bol: null },
+    OTHER: { label: "🌍 Other", amazon: "US", bol: null },
+  };
+
+  function detectCountry() {
     let region = null;
     for (const lang of navigator.languages || [navigator.language]) {
       const m = /-([a-z]{2})\b/i.exec(lang || "");
@@ -208,18 +216,24 @@
     }
     if (!region) {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-      const tzMap = {
-        "Europe/Amsterdam": "NL", "Europe/Brussels": "BE", "Europe/Berlin": "DE",
-        "Europe/Vienna": "DE", "Europe/Paris": "FR", "Europe/London": "UK", "Europe/Dublin": "UK",
-      };
-      region = tzMap[tz] || (tz.startsWith("America/") ? "US" : null);
+      region = { "Europe/Amsterdam": "NL", "Europe/Brussels": "BE", "Europe/Berlin": "DE", "Europe/Vienna": "DE" }[tz] || null;
     }
-    const key = regionToMarket[region] || cfg.amazonDefault || "US";
-    const m = markets[key] || markets[cfg.amazonDefault] || { domain: "www.amazon.com", tag: "" };
-    return { key, domain: m.domain, tag: m.tag };
+    return COUNTRIES[region] ? region : "OTHER";
   }
 
-  let market = { key: "US", domain: "www.amazon.com", tag: "" };
+  // Resolved from the selected country on every change.
+  let market = { domain: "www.amazon.com", tag: "" };
+  let bolRegion = null; // "be" | "nl" when bol.com applies, else null
+
+  function applyCountry(code) {
+    const cfg = window.W2P_CONFIG || {};
+    const c = COUNTRIES[code] || COUNTRIES.OTHER;
+    const m = (cfg.amazonMarkets || {})[c.amazon] || { domain: "www.amazon.com", tag: "" };
+    market = { domain: m.domain, tag: m.tag };
+    bolRegion = c.bol;
+    state.country = code;
+    try { localStorage.setItem("w2p_country", code); } catch (e) { /* ignore */ }
+  }
 
   function amazonUrl(g) {
     const q = encodeURIComponent(`${g.name} board game`);
@@ -227,14 +241,11 @@
     return `https://${market.domain}/s?k=${q}${tag}`;
   }
 
-  // bol.com ships to the Netherlands & Belgium. The button is shown for
-  // every game and every visitor; the BE store is used when we detect a
-  // Belgian visitor, otherwise the (default) NL store, which also serves
-  // Belgian customers.
+  // bol.com ships only to the Netherlands & Belgium, so the button shows
+  // only when one of those is selected.
   function bolUrl(g) {
     const cfg = window.W2P_CONFIG || {};
-    const country = market.key === "BE" ? "be" : "nl";
-    const target = `https://www.bol.com/${country}/nl/s/?searchtext=${encodeURIComponent(g.name + " bordspel")}`;
+    const target = `https://www.bol.com/${bolRegion}/nl/s/?searchtext=${encodeURIComponent(g.name + " bordspel")}`;
     if (!cfg.bolSiteId) return target;
     return `https://partner.bol.com/click/click?p=1&t=url&s=${encodeURIComponent(cfg.bolSiteId)}&url=${encodeURIComponent(target)}&f=TXL`;
   }
@@ -279,7 +290,7 @@
           ${g.description ? `<p class="desc">${esc(g.description)}</p>` : ""}
           <div class="card-actions">
             <a class="btn buy" href="${amazonUrl(g)}" target="_blank" rel="noopener sponsored">Amazon</a>
-            <a class="btn bol" href="${bolUrl(g)}" target="_blank" rel="noopener sponsored">bol.com</a>
+            ${bolRegion ? `<a class="btn bol" href="${bolUrl(g)}" target="_blank" rel="noopener sponsored">bol.com</a>` : ""}
             <a class="btn bgg" href="https://boardgamegeek.com/boardgame/${g.id}" target="_blank" rel="noopener">BGG</a>
           </div>
         </div>
@@ -323,7 +334,21 @@
 
   // ── Wiring ──────────────────────────────────────────────────────────
   function init() {
-    market = detectMarket();
+    // Country: remembered choice, else a best guess, else "Other".
+    let saved = null;
+    try { saved = localStorage.getItem("w2p_country"); } catch (e) { /* ignore */ }
+    const initialCountry = COUNTRIES[saved] ? saved : detectCountry();
+    applyCountry(initialCountry);
+
+    const countrySel = $("#country-select");
+    if (countrySel) {
+      countrySel.value = initialCountry;
+      countrySel.addEventListener("change", (e) => {
+        applyCountry(e.target.value);
+        render(); // buy links and the bol.com button update immediately
+      });
+    }
+
     renderFilterRows();
 
     // One delegated listener handles every chip in every row.

@@ -26,6 +26,31 @@ body {
   background: radial-gradient(ellipse at top, #232842 0%, var(--bg) 70%);
   padding: 48px 0 32px;
   text-align: center;
+  position: relative;
+}
+
+.country-bar {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.country-bar select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid #2c3140;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.country-bar select:focus { outline: none; border-color: var(--accent); }
+@media (max-width: 600px) {
+  .country-bar { position: static; justify-content: center; margin-bottom: 18px; }
 }
 .logo { font-size: 3rem; margin: 0; letter-spacing: -1px; }
 .logo span { color: var(--accent); }
