@@ -226,6 +226,11 @@
     const tag = market.tag ? `&tag=${encodeURIComponent(market.tag)}` : "";
     return `https://${market.domain}/s?k=${q}${tag}`;
   }
+
+  // bol.com ships to the Netherlands & Belgium. The button is shown for
+  // every game and every visitor; the BE store is used when we detect a
+  // Belgian visitor, otherwise the (default) NL store, which also serves
+  // Belgian customers.
   function bolUrl(g) {
     const cfg = window.W2P_CONFIG || {};
     const country = market.key === "BE" ? "be" : "nl";
@@ -233,7 +238,6 @@
     if (!cfg.bolSiteId) return target;
     return `https://partner.bol.com/click/click?p=1&t=url&s=${encodeURIComponent(cfg.bolSiteId)}&url=${encodeURIComponent(target)}&f=TXL`;
   }
-  const showBol = () => market.key === "BE" || market.key === "NL";
 
   // ── Rendering ───────────────────────────────────────────────────────
   function esc(s) {
@@ -275,7 +279,7 @@
           ${g.description ? `<p class="desc">${esc(g.description)}</p>` : ""}
           <div class="card-actions">
             <a class="btn buy" href="${amazonUrl(g)}" target="_blank" rel="noopener sponsored">Amazon</a>
-            ${showBol() ? `<a class="btn bol" href="${bolUrl(g)}" target="_blank" rel="noopener sponsored">bol.com</a>` : ""}
+            <a class="btn bol" href="${bolUrl(g)}" target="_blank" rel="noopener sponsored">bol.com</a>
             <a class="btn bgg" href="https://boardgamegeek.com/boardgame/${g.id}" target="_blank" rel="noopener">BGG</a>
           </div>
         </div>
